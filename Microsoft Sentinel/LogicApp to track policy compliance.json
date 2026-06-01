@@ -1,0 +1,229 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "logicAppName": {
+      "type": "string",
+      "defaultValue": "la-weekly-arg-policy-compliance-report"
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "office365ConnectionName": {
+      "type": "string",
+      "defaultValue": "office365"
+    },
+    "recipientEmail": {
+      "type": "string",
+      "defaultValue": "youremailid@abc.com"
+    },
+    "targetManagementGroups": {
+      "type": "array",
+      "metadata": {
+        "description": "Management group IDs to query with Azure Resource Graph. Use the tenant root management group or top-level enterprise management group for broad coverage."
+      }
+    }
+  },
+  "variables": {
+    "argQuery": "policyResources\n| where type =~ 'microsoft.policyinsights/policystates'\n| where properties.complianceState == 'NonCompliant'\n| extend ResourceId = tostring(properties.resourceId),\n         PolicyAssignmentId = tolower(trim(' ', tostring(properties.policyAssignmentId))),\n         SubscriptionId = tostring(subscriptionId),\n         LastEvaluated = todatetime(properties.timestamp)\n| extend ResourceProvider = tostring(extract('providers/([^/]+)/', 1, ResourceId))\n| extend ResourceName = case(\n    ResourceId has 'Microsoft.Storage/storageAccounts', tostring(extract('Microsoft[.]Storage/storageAccounts/([^/]+)', 1, ResourceId)),\n    ResourceId has 'Microsoft.Compute/virtualMachines', tostring(extract('Microsoft[.]Compute/virtualMachines/([^/]+)', 1, ResourceId)),\n    ResourceId has 'Microsoft.Network/virtualNetworks', tostring(extract('Microsoft[.]Network/virtualNetworks/([^/]+)', 1, ResourceId)),\n    ResourceId has 'Microsoft.Sql/servers', tostring(extract('Microsoft[.]Sql/servers/([^/]+)', 1, ResourceId)),\n    ResourceId has 'Microsoft.KeyVault/vaults', tostring(extract('Microsoft[.]KeyVault/vaults/([^/]+)', 1, ResourceId)),\n    tostring(extract('[^/]+$', 0, ResourceId))\n)\n| extend ResourceCategory = case(\n    ResourceId has 'Microsoft.Compute/virtualMachines', 'VM',\n    ResourceId has 'Microsoft.Storage/storageAccounts', 'Storage',\n    ResourceId has 'Microsoft.Network/virtualNetworks', 'Network',\n    ResourceId has 'Microsoft.Sql/servers', 'SQL',\n    ResourceId has 'Microsoft.KeyVault/vaults', 'Key Vault',\n    ResourceProvider =~ 'Microsoft.Compute', 'Compute',\n    ResourceProvider =~ 'Microsoft.Storage', 'Storage',\n    ResourceProvider =~ 'Microsoft.Network', 'Network',\n    ResourceProvider =~ 'Microsoft.KeyVault', 'Key Vault',\n    'Other'\n)\n| project ResourceId, ResourceName, ResourceCategory, SubscriptionId, PolicyAssignmentId, LastEvaluated\n| join kind=inner (\n    policyResources\n    | where type =~ 'microsoft.authorization/policyassignments'\n    | extend AssignmentName = tostring(properties.displayName),\n             AssignmentId = tolower(trim(' ', tostring(id))),\n             Scope = tostring(properties.scope),\n             PolicyOwner = tostring(properties.metadata.owner)\n    | where AssignmentName has 'CSTM--Configure blob soft delete on a storage account'\n        or AssignmentName has 'Configure Azure Activity logs to stream to specified Log Analytics workspace'\n        or AssignmentName has 'Audit diagnostic setting for selected resource types'\n    | project AssignmentId, AssignmentName, Scope, PolicyOwner\n) on $left.PolicyAssignmentId == $right.AssignmentId\n| project SubscriptionId,\n          ResourceId,\n          ResourceName,\n          ResourceCategory,\n          AssignmentName,\n          AssignmentId,\n          Scope,\n          ['LastEvaluated[UTC]'] = LastEvaluated\n| order by ResourceCategory asc, AssignmentName asc, ResourceName asc"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('office365ConnectionName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "displayName": "Office 365 Outlook",
+        "api": {
+          "id": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', parameters('location'), 'office365')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('logicAppName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/connections', parameters('office365ConnectionName'))]"
+      ],
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "type": "Object",
+              "defaultValue": {}
+            },
+            "recipientEmail": {
+              "type": "String"
+            },
+            "targetManagementGroups": {
+              "type": "Array"
+            },
+            "argQuery": {
+              "type": "String"
+            }
+          },
+          "triggers": {
+            "Weekly_Recurrence": {
+              "type": "Recurrence",
+              "recurrence": {
+                "frequency": "Week",
+                "interval": 1,
+                "timeZone": "India Standard Time",
+                "schedule": {
+                  "weekDays": [
+                    "Monday"
+                  ],
+                  "hours": [
+                    9
+                  ],
+                  "minutes": [
+                    0
+                  ]
+                }
+              }
+            }
+          },
+          "actions": {
+            "Run_ARG_Query": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://management.azure.com/"
+                },
+                "body": {
+                  "managementGroups": "@parameters('targetManagementGroups')",
+                  "query": "@parameters('argQuery')",
+                  "options": {
+                    "resultFormat": "objectArray"
+                  }
+                }
+              },
+              "runAfter": {}
+            },
+            "Create_HTML_Table": {
+              "type": "Table",
+              "inputs": {
+                "from": "@body('Run_ARG_Query')?['data']",
+                "format": "HTML",
+                "columns": [
+                  {
+                    "header": "Category",
+                    "value": "@item()?['ResourceCategory']"
+                  },
+                  {
+                    "header": "Resource",
+                    "value": "@item()?['ResourceName']"
+                  },
+                  {
+                    "header": "Policy Assignment",
+                    "value": "@item()?['AssignmentName']"
+                  },
+                  {
+                    "header": "Subscription",
+                    "value": "@item()?['SubscriptionId']"
+                  },
+                  {
+                    "header": "Last Evaluated UTC",
+                    "value": "@item()?['LastEvaluated[UTC]']"
+                  },
+                  {
+                    "header": "Scope",
+                    "value": "@item()?['Scope']"
+                  }
+                ]
+              },
+              "runAfter": {
+                "Run_ARG_Query": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Build_Email_Body": {
+              "type": "Compose",
+              "inputs": "<html><head><style>body{margin:0;padding:0;background:#f4f6f8;font-family:'Segoe UI',Arial,sans-serif;color:#1f2937;} .container{max-width:1200px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ec;border-radius:8px;overflow:hidden;} .header{background:#102a43;color:#ffffff;padding:24px 28px;} .title{font-size:22px;font-weight:600;} .subtitle{font-size:13px;color:#bcccdc;margin-top:6px;} .summary{padding:20px 28px;border-bottom:1px solid #e5e7eb;} .summary table{width:100%;border-collapse:collapse;} .summary-label{font-size:13px;color:#627d98;} .summary-value{font-size:16px;font-weight:600;color:#102a43;padding-top:4px;} .summary-value.red{color:#b42318;} .content{padding:20px 28px;} .content p{font-size:14px;line-height:20px;margin:0 0 16px 0;} table{border-collapse:collapse;width:100%;font-family:'Segoe UI',Arial,sans-serif;font-size:12px;} th{background:#243b53;color:#ffffff;text-align:left;padding:10px;border:1px solid #d9e2ec;font-weight:600;} td{padding:9px 10px;border:1px solid #d9e2ec;color:#243b53;vertical-align:top;} tr:nth-child(even) td{background:#f8fafc;} .footer{background:#f8fafc;border-top:1px solid #e5e7eb;padding:16px 28px;font-size:12px;color:#627d98;line-height:18px;}</style></head><body><div style='background:#f4f6f8;padding:24px;'><div class='container'><div class='header'><div class='title'>Azure Policy Compliance Report</div><div class='subtitle'>Weekly enterprise governance summary for selected non-compliant policy assignments</div></div><div class='summary'><table><tr><td class='summary-label'>Report cadence</td><td class='summary-label'>Compliance state</td><td class='summary-label'>Non-compliant records</td><td class='summary-label'>Generated UTC</td></tr><tr><td class='summary-value'>Weekly</td><td class='summary-value red'>NonCompliant</td><td class='summary-value'>@{length(body('Run_ARG_Query')?['data'])}</td><td class='summary-value'>@{utcNow()}</td></tr></table></div><div class='content'><p>The following Azure resources are currently reporting as <b>NonCompliant</b> for the selected enterprise policy assignments. Please review ownership, remediation status, and applicable policy scope.</p>@{if(equals(length(body('Run_ARG_Query')?['data']), 0), '<div style=\"padding:16px;border:1px solid #badbcc;background:#f0fff4;color:#0f5132;border-radius:6px;font-size:14px;\">No non-compliant resources were returned for the selected policy assignments.</div>', body('Create_HTML_Table'))}</div><div class='footer'><b>Filters applied:</b> ComplianceState = NonCompliant; selected policy assignments for Storage blob soft delete, Azure Activity Logs streaming, and diagnostic settings audit.<br/><b>Data source:</b> Azure Resource Graph policyResources table.<br/><b>Generated by:</b> Azure Logic Apps using managed identity authentication.</div></div></div></body></html>",
+              "runAfter": {
+                "Create_HTML_Table": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Send_Email": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['office365']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "path": "/v2/Mail",
+                "body": {
+                  "To": "@parameters('recipientEmail')",
+                  "Subject": "Weekly Azure Policy Non-Compliance Report",
+                  "Body": "@outputs('Build_Email_Body')",
+                  "Importance": "High"
+                }
+              },
+              "runAfter": {
+                "Build_Email_Body": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "office365": {
+                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('office365ConnectionName'))]",
+                "connectionName": "[parameters('office365ConnectionName')]",
+                "id": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', parameters('location'), 'office365')]"
+              }
+            }
+          },
+          "recipientEmail": {
+            "value": "[parameters('recipientEmail')]"
+          },
+          "targetManagementGroups": {
+            "value": "[parameters('targetManagementGroups')]"
+          },
+          "argQuery": {
+            "value": "[variables('argQuery')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "logicAppName": {
+      "type": "string",
+      "value": "[parameters('logicAppName')]"
+    },
+    "logicAppPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('logicAppName')), '2019-05-01', 'Full').identity.principalId]"
+    },
+    "office365ConnectionName": {
+      "type": "string",
+      "value": "[parameters('office365ConnectionName')]"
+    }
+  }
+}
