@@ -1,0 +1,229 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "title": "Send Unhealthy Azure Arc Resource Alert",
+    "description": "Sentinel Logic App designed to send a single consolidated email alert when unhealthy Azure Arc resources are detected. The email includes an HTML summary table of all impacted servers.",
+    "prerequisites": [
+      "Office 365 Account"
+    ],
+    "postDeployment": [
+      "Follow post-deployment steps from the playbook readme file.",
+      "Authorize the Azure Monitor Logs and Office 365 API connections after deployment."
+    ],
+    "prerequisitesDeployTemplateFile": "../../Playbooks/Send-UnhealthyAzureArcResourceAlert/azuredeploy.json",
+    "lastUpdateTime": "2026-06-05T00:00:00.000Z",
+    "entities": [],
+    "tags": [],
+    "support": {
+      "tier": "community"
+    },
+    "author": {
+      "name": "Laraib khan"
+    }
+  },
+  "parameters": {
+    "PlaybookName": {
+      "defaultValue": "Send-UnhealthyAzureArcResourceAlert",
+      "type": "string"
+    },
+    "AlertEmailTo": {
+      "defaultValue": "",
+      "type": "string",
+      "metadata": {
+        "description": "Recipient email address or semicolon-separated recipient list for the Azure Arc unhealthy server alert."
+      }
+    }
+  },
+  "variables": {
+    "AzuremonitorlogsConnectionName": "[concat('Azuremonitorlogs-', parameters('PlaybookName'))]",
+    "Office365ConnectionName": "[concat('Office365-', parameters('PlaybookName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2017-07-01",
+      "name": "[parameters('PlaybookName')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "Owner": "MS-SOC",
+        "hidden-SentinelTemplateName": "Send-UnhealthyAzureArcResourceAlert",
+        "hidden-SentinelTemplateVersion": "1.0"
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/connections', variables('AzuremonitorlogsConnectionName'))]",
+        "[resourceId('Microsoft.Web/connections', variables('Office365ConnectionName'))]"
+      ],
+      "properties": {
+        "provisioningState": "Succeeded",
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "defaultValue": {},
+              "type": "Object"
+            }
+          },
+          "triggers": {
+            "Recurrence": {
+              "recurrence": {
+                "frequency": "Day",
+                "interval": 1,
+                "timeZone": "W. Europe Standard Time"
+              },
+              "evaluatedRecurrence": {
+                "frequency": "Day",
+                "interval": 1,
+                "timeZone": "W. Europe Standard Time"
+              },
+              "type": "Recurrence"
+            }
+          },
+          "actions": {
+            "Initialize_HTML_rows": {
+              "runAfter": {},
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "HtmlRows",
+                    "type": "string",
+                    "value": ""
+                  }
+                ]
+              }
+            },
+            "Run_query_and_list_results": {
+              "runAfter": {
+                "Initialize_HTML_rows": [
+                  "Succeeded"
+                ]
+              },
+              "type": "ApiConnection",
+              "inputs": {
+                "body": "let ThresholdTime = 30;\nAzureActivity\n| where TimeGenerated > ago(1d)\n| where CategoryValue == \"ResourceHealth\"\n| where parse_json(Properties).currentHealthStatus == \"Unavailable\"\n| where ActivityStatusValue == \"Active\"\n| extend ResourceType = Properties_d.resourceProviderValue\n| where ResourceType == \"MICROSOFT.HYBRIDCOMPUTE\"\n| extend StartTime = TimeGenerated\n| extend ServerName = Properties_d.resource\n| join kind=leftouter (\n    AzureActivity\n    | where ActivityStatusValue == \"Resolved\"\n    | extend ResourceType = Properties_d.resourceProviderValue\n    | where ResourceType == \"MICROSOFT.HYBRIDCOMPUTE\"\n    | extend EndTime = TimeGenerated\n) on CorrelationId\n| extend Minutes_OfflineTillResolve = datetime_diff('minute', EndTime, StartTime)\n| project ServerName, StartTime, EndTime, CorrelationId, Minutes_OfflineTillResolve, Level, ActivityStatusValue1, ResourceGroup, OperationNameValue, SubscriptionId, ResourceProvider, Type, CategoryValue, ActivityStatusValue\n| extend TotalMinutes_Offline = datetime_diff('minute', now(), StartTime)\n| where TotalMinutes_Offline >= ThresholdTime and ActivityStatusValue1 !has \"Resolved\"\n| order by TotalMinutes_Offline desc",
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "path": "/queryData",
+                "queries": {
+                  "resourcegroups": "",
+                  "resourcename": "",
+                  "resourcetype": "",
+                  "subscriptions": "",
+                  "timerange": ""
+                }
+              }
+            },
+            "For_each_unhealthy_server": {
+              "foreach": "@body('Run_query_and_list_results')?['value']",
+              "actions": {
+                "Append_HTML_row": {
+                  "runAfter": {},
+                  "type": "AppendToStringVariable",
+                  "inputs": {
+                    "name": "HtmlRows",
+                    "value": "<tr><td><strong>@{items('For_each_unhealthy_server')?['ServerName']}</strong></td><td>@{items('For_each_unhealthy_server')?['ResourceGroup']}</td><td class=\"status\">@{items('For_each_unhealthy_server')?['ActivityStatusValue']}</td><td>@{items('For_each_unhealthy_server')?['Level']}</td><td>@{items('For_each_unhealthy_server')?['StartTime']}</td><td class=\"minutes\">@{items('For_each_unhealthy_server')?['TotalMinutes_Offline']}</td><td>@{items('For_each_unhealthy_server')?['SubscriptionId']}</td><td>@{items('For_each_unhealthy_server')?['CategoryValue']}</td></tr>"
+                  }
+                }
+              },
+              "runAfter": {
+                "Run_query_and_list_results": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "operationOptions": "Sequential"
+            },
+            "Send_email_if_unhealthy_servers_exist": {
+              "runAfter": {
+                "For_each_unhealthy_server": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "expression": "@greater(length(body('Run_query_and_list_results')?['value']), 0)",
+              "actions": {
+                "Send_an_email_V2": {
+                  "runAfter": {},
+                  "type": "ApiConnection",
+                  "inputs": {
+                    "body": {
+                      "Body": "@{concat('<html><head><meta charset=\"UTF-8\"><style>body{margin:0;padding:0;background-color:#f4f6f8;font-family:Segoe UI,Arial,sans-serif;color:#242424;} .container{max-width:1100px;margin:0 auto;background-color:#ffffff;border:1px solid #d9d9d9;} .header{background-color:#a4262c;color:#ffffff;padding:20px 24px;} .header h1{margin:0;font-size:22px;font-weight:600;} .header p{margin:6px 0 0 0;font-size:14px;} .content{padding:24px;} .summary{display:block;background-color:#fff4ce;border-left:5px solid #ffb900;padding:14px 16px;margin-bottom:20px;} .summary strong{color:#3b3a39;} .meta{margin:0 0 18px 0;font-size:14px;color:#605e5c;} table{border-collapse:collapse;width:100%;font-size:13px;} th{background-color:#323130;color:#ffffff;text-align:left;padding:10px 8px;border:1px solid #d2d0ce;white-space:nowrap;} td{padding:9px 8px;border:1px solid #edebe9;vertical-align:top;} tr:nth-child(even){background-color:#faf9f8;} .status{color:#a4262c;font-weight:600;} .minutes{font-weight:600;color:#a4262c;} .footer{padding:16px 24px;background-color:#f3f2f1;color:#605e5c;font-size:12px;border-top:1px solid #d2d0ce;} .nextsteps{margin-top:20px;padding:14px 16px;background-color:#f8f8f8;border:1px solid #edebe9;} .nextsteps h3{margin:0 0 8px 0;font-size:15px;} .nextsteps ul{margin:8px 0 0 20px;padding:0;}</style></head><body><div class=\"container\"><div class=\"header\"><h1>Azure Arc unhealthy server alert</h1><p>One or more Arc-enabled servers have been unavailable for 30 minutes or more.</p></div><div class=\"content\"><div class=\"summary\"><strong>Alert summary:</strong> ', string(length(body('Run_query_and_list_results')?['value'])), ' unhealthy Arc-enabled server(s) require attention.</div><p class=\"meta\"><strong>Detection window:</strong> Last 24 hours<br><strong>Alert threshold:</strong> 30 minutes offline<br><strong>Resource type:</strong> Microsoft.HybridCompute/machines</p><table><thead><tr><th>Server name</th><th>Resource group</th><th>Status</th><th>Level</th><th>Start time</th><th>Minutes offline</th><th>Subscription ID</th><th>Provider</th></tr></thead><tbody>', variables('HtmlRows'), '</tbody></table><div class=\"nextsteps\"><h3>Recommended next steps</h3><ul><li>Validate whether the server is intentionally offline or under maintenance.</li><li>Check Azure Arc agent connectivity and heartbeat status.</li><li>Review recent platform, network, or firewall changes affecting the server.</li><li>If the server has recovered, confirm the corresponding Resource Health event is resolved.</li></ul></div></div><div class=\"footer\">This notification was generated automatically from Azure Monitor Logs. Please do not reply directly to this message.</div></div></body></html>')}",
+                      "Importance": "Normal",
+                      "Subject": "@{concat('[Action required] ', string(length(body('Run_query_and_list_results')?['value'])), ' Azure Arc server(s) unhealthy')}",
+                      "To": "[parameters('AlertEmailTo')]"
+                    },
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['office365']['connectionId']"
+                      }
+                    },
+                    "method": "post",
+                    "path": "/v2/Mail"
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "azuremonitorlogs": {
+                "connectionId": "[resourceId('Microsoft.Web/connections', variables('AzuremonitorlogsConnectionName'))]",
+                "connectionName": "[variables('AzuremonitorlogsConnectionName')]",
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/Azuremonitorlogs')]"
+              },
+              "office365": {
+                "connectionId": "[resourceId('Microsoft.Web/connections', variables('Office365ConnectionName'))]",
+                "connectionName": "[variables('Office365ConnectionName')]",
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/Office365')]"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[variables('AzuremonitorlogsConnectionName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "V1",
+      "properties": {
+        "displayName": "[variables('AzuremonitorlogsConnectionName')]",
+        "customParameterValues": {},
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/Azuremonitorlogs')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[variables('Office365ConnectionName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "V1",
+      "properties": {
+        "displayName": "[variables('Office365ConnectionName')]",
+        "customParameterValues": {},
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/Office365')]"
+        }
+      }
+    }
+  ]
+}
