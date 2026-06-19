@@ -1,0 +1,17 @@
+let lookback = 30d;
+let topDevices =
+    CommonSecurityLog
+    | where TimeGenerated >= ago(lookback)
+    | summarize TotalEvents = count() by DeviceName = coalesce(DeviceName, Computer, SourceSystem, "Unknown")
+    | top 10 by TotalEvents desc
+    | project DeviceName;
+CommonSecurityLog
+| where TimeGenerated >= ago(lookback)
+| extend DeviceName = coalesce(DeviceName, Computer, SourceSystem, "Unknown")
+| where DeviceName in (topDevices)
+| summarize
+    Events = count(),
+    IngestedGB = sum(_BilledSize) / 1024.0 / 1024.0 / 1024.0
+    by DeviceName, Day = bin(TimeGenerated, 1d)
+| order by Day asc
+| render timechart
