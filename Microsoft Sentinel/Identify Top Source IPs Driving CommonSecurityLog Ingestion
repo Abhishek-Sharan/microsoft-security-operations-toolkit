@@ -1,0 +1,30 @@
+let lookback = 7d;
+let topDevices =
+    CommonSecurityLog
+    | where TimeGenerated >= ago(lookback)
+    | summarize TotalEvents = count()
+        by DeviceName = coalesce(DeviceName, Computer, SourceSystem, "Unknown")
+    | top 10 by TotalEvents desc
+    | project DeviceName;
+CommonSecurityLog
+| where TimeGenerated >= ago(lookback)
+| extend
+    DeviceName = coalesce(DeviceName, Computer, SourceSystem, "Unknown"),
+    SourceIPResolved = coalesce(SourceIP, SourceTranslatedAddress, "Unknown")
+| where DeviceName in (topDevices)
+| summarize
+    Events = count(),
+    IngestedGB = sum(_BilledSize) / 1024.0 / 1024.0 / 1024.0
+    by Day = bin(TimeGenerated, 1d), DeviceName, SourceIPResolved
+| sort by Day desc, IngestedGB desc
+| serialize
+| extend Rank = row_number(1, prev(Day) != Day)
+| where Rank <= 20
+| project
+    Day,
+    Rank,
+    DeviceName,
+    SourceIPResolved,
+    Events,
+    IngestedGB = round(IngestedGB, 3)
+| order by Day desc, Rank asc
