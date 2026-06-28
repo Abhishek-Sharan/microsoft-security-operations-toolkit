@@ -16,3 +16,7 @@ By using this project, you acknowledge and agree that:
 This repository is not intended for use in safety-critical, regulated, or production environments without independent review, validation, monitoring, and appropriate safeguards.
 
 ### 🚨 Use at your own risk.
+
+## Custom Agents
+
+- [SOC Malware Investigator Portable](Custom%20Agents/SOC%20Malware%20Investigator%20Portable/README.md) - a portable defensive SOC agent for Microsoft Defender XDR and Microsoft Sentinel malware incident triage.
