@@ -1,4 +1,4 @@
-# Microsoft Unified Security Operations Platform
+# Microsoft Security Operations Toolkit
 
 This repository contains practical Microsoft security operations content across Microsoft Sentinel, Microsoft Defender XDR, Microsoft Defender for Cloud, Microsoft Defender Vulnerability Management, and AI-assisted SOC workflows.
 
