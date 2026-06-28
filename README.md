@@ -1,6 +1,6 @@
 # Microsoft Security Operations Toolkit
 
-This repository contains practical Microsoft security operations content across Microsoft Sentinel, Microsoft Defender XDR, Microsoft Defender for Cloud, Microsoft Defender Vulnerability Management, and AI-assisted SOC workflows.
+This repository contains practical Microsoft security operations content across Microsoft Sentinel, Microsoft Defender XDR, Microsoft Defender for Cloud, Microsoft Defender Vulnerability Management, Azure Monitor, Log Analytics, and AI-assisted SOC workflows.
 
 The content is organized for security engineers, SOC analysts, architects, and defenders who want reusable queries, automation templates, scripts, and agent patterns for unified security operations.
 
@@ -9,6 +9,8 @@ The content is organized for security engineers, SOC analysts, architects, and d
 | Folder | Purpose |
 | --- | --- |
 | [AI Security](AI%20Security/README.md) | AI-assisted security operations content, including custom GitHub Copilot agents. |
+| [Azure Monitor](Azure%20Monitor/README.md) | Azure Monitor Agent and extension management scripts. |
+| [Log Analytics](Log%20Analytics/README.md) | Log Analytics table management and workspace administration scripts. |
 | [Microsoft Sentinel](Microsoft%20Sentinel/README.md) | Sentinel KQL queries, automation samples, scripts, and helper tools. |
 | [Microsoft Defender for Endpoint](Microsoft%20Defender%20for%20Endpoint/README.md) | MDE advanced hunting queries and operational scripts. |
 | [Microsoft Defender for Cloud](Microsoft%20Defender%20for%20Cloud/README.md) | Defender for Cloud posture queries and automation templates. |
