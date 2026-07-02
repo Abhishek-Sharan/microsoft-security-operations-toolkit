@@ -1,0 +1,559 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {"defaultSubscriptionId": {"type": "String"}, "defaultResourceGroupName": {"type": "String"}, "defaultWorkspaceName": {"type": "String"}, "logAnalyticsWorkspaceCustomerId": {"type": "String"}},
+  "triggers": {
+    "manual": {
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "method": "POST",
+        "schema": {
+          "type": "object",
+          "required": [
+            "subscriptionId",
+            "resourceGroupName",
+            "workspaceName",
+            "incidentId",
+            "incidentNumber",
+            "reportVersion",
+            "generatedUtc",
+            "commentBody",
+            "mode"
+          ],
+          "properties": {
+            "subscriptionId": {
+              "type": "string"
+            },
+            "resourceGroupName": {
+              "type": "string"
+            },
+            "workspaceName": {
+              "type": "string"
+            },
+            "incidentId": {
+              "type": "string"
+            },
+            "incidentNumber": {
+              "type": "integer"
+            },
+            "reportVersion": {
+              "type": "string"
+            },
+            "generatedUtc": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "commentBody": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "update-or-create"
+              ]
+            },
+            "marker": {
+              "type": "string",
+              "default": "=== INCIDENT TRIAGE REPORT ==="
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "actions": {
+    "Initialize_status": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "status",
+            "type": "string",
+            "value": "Failed-Unknown"
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "Initialize_commentTarget": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "commentTarget",
+            "type": "string",
+            "value": "unknown"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_status": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_attempts": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "attempts",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_commentTarget": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_reportVersion": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "reportVersion",
+            "type": "string",
+            "value": "@triggerBody()?['reportVersion']"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_attempts": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_marker": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "marker",
+            "type": "string",
+            "value": "@coalesce(triggerBody()?['marker'], '=== INCIDENT TRIAGE REPORT ===')"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_reportVersion": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_incidentResourceName": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "incidentResourceName",
+            "type": "string",
+            "value": "@string(triggerBody()?['incidentId'])"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_marker": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Condition_Resolve_incident_number": {
+      "type": "If",
+      "expression": "@or(empty(variables('incidentResourceName')), equals(variables('incidentResourceName'), string(triggerBody()?['incidentNumber'])), not(contains(variables('incidentResourceName'), '-')))",
+      "actions": {
+        "HTTP_Query_incident_by_number": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@concat('https://api.loganalytics.io/v1/workspaces/', parameters('logAnalyticsWorkspaceCustomerId'), '/query')",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "query": "@concat('SecurityIncident | where IncidentNumber == ', string(triggerBody()?['incidentNumber']), ' | summarize arg_max(TimeGenerated, *) by IncidentNumber | project IncidentName')"
+            },
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "audience": "https://api.loganalytics.io"
+            },
+            "retryPolicy": {
+              "type": "exponential",
+              "count": 2,
+              "interval": "PT10S"
+            }
+          },
+          "runAfter": {}
+        },
+        "Condition_Incident_Number_Found": {
+          "type": "If",
+          "expression": {
+            "greater": [
+              "@length(first(body('HTTP_Query_incident_by_number')?['tables'])?['rows'])",
+              0
+            ]
+          },
+          "actions": {
+            "Set_incidentResourceName_from_number": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "incidentResourceName",
+                "value": "@first(first(body('HTTP_Query_incident_by_number')?['tables'])?['rows'])?[0]"
+              },
+              "runAfter": {}
+            }
+          },
+          "else": {
+            "actions": {
+              "Set_status_incident_not_found": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "status",
+                  "value": "Failed-ToolUnavailable"
+                },
+                "runAfter": {}
+              }
+            }
+          },
+          "runAfter": {
+            "HTTP_Query_incident_by_number": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Initialize_incidentResourceName": [
+          "Succeeded"
+        ]
+      }
+    },
+    "HTTP_List_comments": {
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@concat('https://management.azure.com/subscriptions/', if(empty(triggerBody()?['subscriptionId']), parameters('defaultSubscriptionId'), triggerBody()?['subscriptionId']), '/resourceGroups/', if(empty(triggerBody()?['resourceGroupName']), parameters('defaultResourceGroupName'), triggerBody()?['resourceGroupName']), '/providers/Microsoft.OperationalInsights/workspaces/', if(empty(triggerBody()?['workspaceName']), parameters('defaultWorkspaceName'), triggerBody()?['workspaceName']), '/providers/Microsoft.SecurityInsights/incidents/', variables('incidentResourceName'), '/comments?api-version=2023-11-01')",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "audience": "https://management.azure.com/"
+        },
+        "retryPolicy": {
+          "type": "exponential",
+          "count": 2,
+          "interval": "PT10S"
+        }
+      },
+      "runAfter": {
+        "Condition_Resolve_incident_number": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Condition_List_succeeded": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greaterOrEquals": [
+              "@outputs('HTTP_List_comments')?['statusCode']",
+              200
+            ]
+          },
+          {
+            "less": [
+              "@outputs('HTTP_List_comments')?['statusCode']",
+              400
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Filter_Automation_Comment": {
+          "type": "Query",
+          "inputs": {
+            "from": "@body('HTTP_List_comments')?['value']",
+            "where": "@contains(coalesce(item()?['properties']?['message'], ''), variables('marker'))"
+          },
+          "runAfter": {}
+        },
+        "Condition_Has_existing_comment": {
+          "type": "If",
+          "expression": {
+            "greater": [
+              "@length(body('Filter_Automation_Comment'))",
+              0
+            ]
+          },
+          "actions": {
+            "Set_commentTarget_existing": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "commentTarget",
+                "value": "@coalesce(first(body('Filter_Automation_Comment'))?['name'], last(split(first(body('Filter_Automation_Comment'))?['id'], '/')))"
+              },
+              "runAfter": {}
+            },
+            "Increment_attempts_update": {
+              "type": "IncrementVariable",
+              "inputs": {
+                "name": "attempts",
+                "value": 1
+              },
+              "runAfter": {
+                "Set_commentTarget_existing": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "HTTP_Update_existing_comment": {
+              "type": "Http",
+              "inputs": {
+                "method": "PUT",
+                "uri": "@concat('https://management.azure.com/subscriptions/', if(empty(triggerBody()?['subscriptionId']), parameters('defaultSubscriptionId'), triggerBody()?['subscriptionId']), '/resourceGroups/', if(empty(triggerBody()?['resourceGroupName']), parameters('defaultResourceGroupName'), triggerBody()?['resourceGroupName']), '/providers/Microsoft.OperationalInsights/workspaces/', if(empty(triggerBody()?['workspaceName']), parameters('defaultWorkspaceName'), triggerBody()?['workspaceName']), '/providers/Microsoft.SecurityInsights/incidents/', variables('incidentResourceName'), '/comments/', variables('commentTarget'), '?api-version=2023-11-01')",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "properties": {
+                    "message": "@triggerBody()?['commentBody']"
+                  }
+                },
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://management.azure.com/"
+                },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 2,
+                  "interval": "PT10S"
+                }
+              },
+              "runAfter": {
+                "Increment_attempts_update": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Set_status_after_update": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "status",
+                "value": "@if(or(equals(outputs('HTTP_Update_existing_comment')?['statusCode'], 401), equals(outputs('HTTP_Update_existing_comment')?['statusCode'], 403)), 'Failed-Authorization', if(or(equals(outputs('HTTP_Update_existing_comment')?['statusCode'], 404), equals(outputs('HTTP_Update_existing_comment')?['statusCode'], 501)), 'Failed-ToolUnavailable', if(and(greaterOrEquals(outputs('HTTP_Update_existing_comment')?['statusCode'], 200), less(outputs('HTTP_Update_existing_comment')?['statusCode'], 400)), 'Done-UpdatedExisting', 'Failed-Unknown')))"
+              },
+              "runAfter": {
+                "HTTP_Update_existing_comment": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Set_commentTarget_new": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "commentTarget",
+                  "value": "@guid()"
+                },
+                "runAfter": {}
+              },
+              "Increment_attempts_create": {
+                "type": "IncrementVariable",
+                "inputs": {
+                  "name": "attempts",
+                  "value": 1
+                },
+                "runAfter": {
+                  "Set_commentTarget_new": [
+                    "Succeeded"
+                  ]
+                }
+              },
+              "HTTP_Create_new_comment": {
+                "type": "Http",
+                "inputs": {
+                  "method": "PUT",
+                  "uri": "@concat('https://management.azure.com/subscriptions/', if(empty(triggerBody()?['subscriptionId']), parameters('defaultSubscriptionId'), triggerBody()?['subscriptionId']), '/resourceGroups/', if(empty(triggerBody()?['resourceGroupName']), parameters('defaultResourceGroupName'), triggerBody()?['resourceGroupName']), '/providers/Microsoft.OperationalInsights/workspaces/', if(empty(triggerBody()?['workspaceName']), parameters('defaultWorkspaceName'), triggerBody()?['workspaceName']), '/providers/Microsoft.SecurityInsights/incidents/', variables('incidentResourceName'), '/comments/', variables('commentTarget'), '?api-version=2023-11-01')",
+                  "headers": {
+                    "Content-Type": "application/json"
+                  },
+                  "body": {
+                    "properties": {
+                      "message": "@triggerBody()?['commentBody']"
+                    }
+                  },
+                  "authentication": {
+                    "type": "ManagedServiceIdentity",
+                    "audience": "https://management.azure.com/"
+                  },
+                  "retryPolicy": {
+                    "type": "exponential",
+                    "count": 2,
+                    "interval": "PT10S"
+                  }
+                },
+                "runAfter": {
+                  "Increment_attempts_create": [
+                    "Succeeded"
+                  ]
+                }
+              },
+              "Set_status_after_create": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "status",
+                  "value": "@if(or(equals(outputs('HTTP_Create_new_comment')?['statusCode'], 401), equals(outputs('HTTP_Create_new_comment')?['statusCode'], 403)), 'Failed-Authorization', if(or(equals(outputs('HTTP_Create_new_comment')?['statusCode'], 404), equals(outputs('HTTP_Create_new_comment')?['statusCode'], 501)), 'Failed-ToolUnavailable', if(and(greaterOrEquals(outputs('HTTP_Create_new_comment')?['statusCode'], 200), less(outputs('HTTP_Create_new_comment')?['statusCode'], 400)), 'Done-CreatedNew', 'Failed-Unknown')))"
+                },
+                "runAfter": {
+                  "HTTP_Create_new_comment": [
+                    "Succeeded",
+                    "Failed",
+                    "TimedOut"
+                  ]
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Filter_Automation_Comment": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Condition_Status_done": {
+          "type": "If",
+          "expression": {
+            "startsWith": [
+              "@variables('status')",
+              "Done-"
+            ]
+          },
+          "actions": {
+            "HTTP_Verify_comments": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "@concat('https://management.azure.com/subscriptions/', if(empty(triggerBody()?['subscriptionId']), parameters('defaultSubscriptionId'), triggerBody()?['subscriptionId']), '/resourceGroups/', if(empty(triggerBody()?['resourceGroupName']), parameters('defaultResourceGroupName'), triggerBody()?['resourceGroupName']), '/providers/Microsoft.OperationalInsights/workspaces/', if(empty(triggerBody()?['workspaceName']), parameters('defaultWorkspaceName'), triggerBody()?['workspaceName']), '/providers/Microsoft.SecurityInsights/incidents/', variables('incidentResourceName'), '/comments?api-version=2023-11-01')",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://management.azure.com/"
+                },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 2,
+                  "interval": "PT10S"
+                }
+              },
+              "runAfter": {}
+            },
+            "Filter_Verification": {
+              "type": "Query",
+              "inputs": {
+                "from": "@body('HTTP_Verify_comments')?['value']",
+                "where": "@contains(coalesce(item()?['properties']?['message'], ''), variables('reportVersion'))"
+              },
+              "runAfter": {
+                "HTTP_Verify_comments": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Condition_Verified": {
+              "type": "If",
+              "expression": {
+                "greater": [
+                  "@length(body('Filter_Verification'))",
+                  0
+                ]
+              },
+              "actions": {},
+              "else": {
+                "actions": {
+                  "Set_status_validation_failed": {
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "status",
+                      "value": "Failed-Validation"
+                    },
+                    "runAfter": {}
+                  }
+                }
+              },
+              "runAfter": {
+                "Filter_Verification": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          },
+          "runAfter": {
+            "Condition_Has_existing_comment": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "else": {
+        "actions": {
+          "Set_status_after_list_failure": {
+            "type": "SetVariable",
+            "inputs": {
+              "name": "status",
+              "value": "@if(or(equals(outputs('HTTP_List_comments')?['statusCode'], 401), equals(outputs('HTTP_List_comments')?['statusCode'], 403)), 'Failed-Authorization', if(or(equals(outputs('HTTP_List_comments')?['statusCode'], 404), equals(outputs('HTTP_List_comments')?['statusCode'], 501)), 'Failed-ToolUnavailable', 'Failed-Unknown'))"
+            },
+            "runAfter": {}
+          }
+        }
+      },
+      "runAfter": {
+        "HTTP_List_comments": [
+          "Succeeded",
+          "Failed",
+          "TimedOut"
+        ]
+      }
+    },
+    "Response": {
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": "@if(startsWith(variables('status'), 'Done-'), 200, 500)",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "status": "@variables('status')",
+          "incidentId": "@triggerBody()?['incidentId']",
+          "incidentNumber": "@triggerBody()?['incidentNumber']",
+          "commentTarget": "@variables('commentTarget')",
+          "commentUpdateAttempts": "@variables('attempts')",
+          "reportVersion": "@variables('reportVersion')",
+          "generatedUtc": "@triggerBody()?['generatedUtc']",
+          "verified": "@startsWith(variables('status'), 'Done-')",
+          "errorCode": "@if(startsWith(variables('status'), 'Done-'), '', variables('status'))",
+          "errorMessage": "@if(startsWith(variables('status'), 'Done-'), '', concat('Incident comment upsert failed with status ', variables('status')))"
+        }
+      },
+      "runAfter": {
+        "Condition_List_succeeded": [
+          "Succeeded",
+          "Failed",
+          "TimedOut"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}
