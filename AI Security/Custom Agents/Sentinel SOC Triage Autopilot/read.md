@@ -4,6 +4,17 @@ This folder contains a portable GitHub Copilot custom agent and a redacted Azure
 
 The agent is designed for authorized defensive SOC operations. It uses Microsoft Sentinel MCP triage and data exploration capabilities to analyze an incident, produce a SOC-ready report, and call a Logic App that upserts a single automation-generated incident comment.
 
+## Runtime environment
+
+This custom agent was created for and tested in a Visual Studio Code + GitHub Copilot environment with Microsoft Sentinel MCP servers enabled.
+
+Expected MCP capabilities include:
+
+- Sentinel triage MCP collection for incident, alert, and entity triage.
+- Sentinel data exploration MCP collection for KQL/lake queries, graph telemetry, entity analysis, and IOC/TI correlation.
+
+The Logic App deployment template is Azure-native and can be deployed independently, but the full automated agent workflow requires the Sentinel MCP servers to be available in the Copilot environment.
+
 ## Contents
 
 | File | Purpose |
