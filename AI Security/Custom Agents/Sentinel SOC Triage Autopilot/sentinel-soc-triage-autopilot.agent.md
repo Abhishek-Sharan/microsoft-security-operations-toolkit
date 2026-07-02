@@ -1,5 +1,5 @@
 ---
-name: Sentinel NightWatch Reliable Writeback
+name: Sentinel SOC Triage Autopilot
 description: "Autonomous Microsoft Sentinel incident triage agent with deterministic Logic App comment writeback. Use for one-shot Sentinel incident analysis, verdicting, and verified latest-comment upsert."
 argument-hint: "Enter only the SentinelIncidentNumber, for example: 1647"
 user-invocable: true

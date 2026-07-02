@@ -1,4 +1,4 @@
-# Sentinel NightWatch Reliable Writeback
+# Sentinel SOC Triage Autopilot
 
 This folder contains a portable GitHub Copilot custom agent and a redacted Azure Logic App deployment template for autonomous Microsoft Sentinel incident triage with verified incident comment writeback.
 
@@ -8,7 +8,7 @@ The agent is designed for authorized defensive SOC operations. It uses Microsoft
 
 | File | Purpose |
 | --- | --- |
-| `sentinel-nightwatch-reliable-writeback.agent.md` | Portable custom agent instructions. |
+| `sentinel-soc-triage-autopilot.agent.md` | Portable custom agent instructions. |
 | `logic-app/infra/main.bicep` | Redacted Bicep template for the Logic App Consumption playbook and managed identity RBAC. |
 | `logic-app/infra/workflow-definition.json` | Logic App workflow definition for incident comment upsert. |
 | `logic-app/infra/main.parameters.sample.json` | Sample deployment parameters. Copy to `main.parameters.json` before deployment. |
@@ -142,7 +142,7 @@ The deployment creates:
 
 ## Configure the agent
 
-Open `sentinel-nightwatch-reliable-writeback.agent.md` and replace placeholders:
+Open `sentinel-soc-triage-autopilot.agent.md` and replace placeholders:
 
 | Placeholder | Replace with |
 | --- | --- |
@@ -161,7 +161,7 @@ Keep the Logic App resource ID in this format:
 Example:
 
 ```text
-Use the Sentinel NightWatch Reliable Writeback agent for incident 1647.
+Use the Sentinel SOC Triage Autopilot agent for incident 1647.
 ```
 
 The agent should:
