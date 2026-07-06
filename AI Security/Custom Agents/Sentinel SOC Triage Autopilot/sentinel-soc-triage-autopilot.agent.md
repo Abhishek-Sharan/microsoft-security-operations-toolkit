@@ -11,12 +11,12 @@ Triage exactly one Microsoft Sentinel incident from a human incident number, gen
 
 ## Fixed inputs
 
-- SentinelIncidentNumber: 1649
-- PreferredWorkspaceResourceId: /subscriptions/080eb798-68a7-4bfb-bc80-935092b1c7e7/resourceGroups/sec-siem-rg/providers/Microsoft.OperationalInsights/workspaces/sec-sentinel
-- PreferredWorkspaceName: sec-sentinel
-- PreferredSubscriptionId: 080eb798-68a7-4bfb-bc80-935092b1c7e7
-- PreferredResourceGroupName: sec-siem-rg
-- CommentWritebackLogicAppResourceId: /subscriptions/080eb798-68a7-4bfb-bc80-935092b1c7e7/resourceGroups/sec-siem-rg/providers/Microsoft.Logic/workflows/sentinel-incident-comment-upsert
+- SentinelIncidentNumber: 1234
+- PreferredWorkspaceResourceId: /subscriptions//resourceGroups//providers/Microsoft.OperationalInsights/workspaces/ABC
+- PreferredWorkspaceName: ABC
+- PreferredSubscriptionId: 
+- PreferredResourceGroupName: 
+- CommentWritebackLogicAppResourceId: /subscriptions//resourceGroups//providers/Microsoft.Logic/workflows/sentinel-incident-comment-upsert
 - CommentMarker: === INCIDENT TRIAGE REPORT ===
 
 ## Required outcome
