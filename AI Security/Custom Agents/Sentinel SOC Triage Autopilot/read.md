@@ -2,7 +2,7 @@
 
 This folder contains a portable GitHub Copilot custom agent and a redacted Azure Logic App deployment template for autonomous Microsoft Sentinel incident triage with verified incident comment writeback.
 
-The agent is designed for authorized defensive SOC operations. It uses Microsoft Sentinel MCP triage and data exploration capabilities to analyze an incident, produce a SOC-ready report, and call a Logic App that upserts a single automation-generated incident comment.
+The agent is designed for authorized defensive SOC operations. It uses Microsoft Sentinel MCP triage and data exploration capabilities to analyze an incident, produce a SOC-ready report, and call a Logic App that appends a new automation-generated incident comment for each execution.
 
 ## Runtime environment
 
@@ -21,7 +21,7 @@ The Logic App deployment template is Azure-native and can be deployed independen
 | --- | --- |
 | `sentinel-soc-triage-autopilot.agent.md` | Portable custom agent instructions. |
 | `logic-app/infra/main.bicep` | Redacted Bicep template for the Logic App Consumption playbook and managed identity RBAC. |
-| `logic-app/infra/workflow-definition.json` | Logic App workflow definition for incident comment upsert. |
+| `logic-app/infra/workflow-definition.json` | Logic App workflow definition for append-only incident comment writeback. |
 | `logic-app/infra/main.parameters.sample.json` | Sample deployment parameters. Copy to `main.parameters.json` before deployment. |
 | `read.md` | This deployment and execution guide. |
 
@@ -33,7 +33,7 @@ The Logic App deployment template is Azure-native and can be deployed independen
 4. Uses Sentinel data exploration MCP tools for KQL/lake queries, entity enrichment, graph telemetry, and IOC/TI correlation.
 5. Generates a full ASCII incident report.
 6. Calls the Logic App callback URL with the report body.
-7. The Logic App lists existing incident comments, updates the existing automation comment if the marker is present, or creates a new comment if not.
+7. The Logic App creates a new incident comment for each execution using a generated comment ID.
 8. The Logic App verifies the report version is present in Sentinel comments and returns a structured Done/Failed status.
 
 ## Execution flow
@@ -54,7 +54,7 @@ flowchart TD
     J --> L
     L --> M[Validate report fidelity]
     M --> N[Invoke Logic App callback URL]
-    N --> O[Logic App upserts Sentinel incident comment]
+    N --> O[Logic App creates a new Sentinel incident comment]
     O --> P[Logic App verifies reportVersion in comments]
     P --> Q[Agent returns comment body and writeback status]
 ```
@@ -68,16 +68,12 @@ flowchart TD
     C -- Yes --> E[Use incidentId directly]
     C -- No --> D[Resolve IncidentName from SecurityIncident by incidentNumber]
     D --> E
-    E --> F[GET incident comments via ARM using managed identity]
-    F --> G[Filter comments containing marker]
-    G --> H{Automation comment exists?}
-    H -- Yes --> I[PUT update existing comment]
-    H -- No --> J[PUT create new comment with guid]
-    I --> K[GET comments again]
-    J --> K
-    K --> L{Any comment contains reportVersion?}
-    L -- Yes --> M[Return Done-UpdatedExisting or Done-CreatedNew]
-    L -- No --> N[Return Failed-Validation]
+    E --> F[Generate new comment ID with guid]
+    F --> G[PUT create new incident comment via ARM using managed identity]
+    G --> H[GET comments again]
+    H --> I{Any comment contains reportVersion?}
+    I -- Yes --> J[Return Done-CreatedNew]
+    I -- No --> K[Return Failed-Validation]
 ```
 
 ## MCP server expectations
@@ -180,8 +176,14 @@ The agent should:
 1. Resolve incident `1647` to `SecurityIncident.IncidentName`.
 2. Generate a full comment body.
 3. Invoke the Logic App callback URL.
-4. Return a writeback execution result, including `CommentUpdateStatus`, `CommentTarget`, `CommentUpdateAttempts`, and `Verified`.
+4. Create a new Sentinel incident comment for this execution.
+5. Return a writeback execution result, including `CommentUpdateStatus`, `CommentTarget`, `CommentUpdateAttempts`, and `Verified`.
 
+## Append-only comment behavior
+
+This Logic App is intentionally append-only: every successful execution creates a new Sentinel incident comment. It does not update or overwrite previous automation-generated comments, even when the stable marker is present.
+
+The request still accepts `mode = "update-or-create"` for compatibility with existing agents, but the workflow always follows the create-new path and returns `Done-CreatedNew` on success.
 ## Logic App request contract
 
 The agent invokes the Logic App with this schema:
@@ -209,7 +211,7 @@ Successful responses look like:
 
 ```json
 {
-  "status": "Done-UpdatedExisting",
+  "status": "Done-CreatedNew",
   "incidentId": "<incident id sent>",
   "incidentNumber": 1647,
   "commentTarget": "<comment id>",
@@ -224,7 +226,6 @@ Successful responses look like:
 
 Status values:
 
-- `Done-UpdatedExisting`
 - `Done-CreatedNew`
 - `Failed-Authorization`
 - `Failed-ToolUnavailable`
@@ -247,3 +248,5 @@ Status values:
 - The Bicep template outputs the callback URL as a secure output. Treat it as a secret.
 - Keep the agent placeholders generic in public repositories.
 - Use this only for authorized defensive security operations.
+
+

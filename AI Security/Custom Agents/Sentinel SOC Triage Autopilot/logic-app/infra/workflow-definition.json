@@ -286,9 +286,9 @@
         "Condition_Has_existing_comment": {
           "type": "If",
           "expression": {
-            "greater": [
-              "@length(body('Filter_Automation_Comment'))",
-              0
+            "equals": [
+              true,
+              false
             ]
           },
           "actions": {
