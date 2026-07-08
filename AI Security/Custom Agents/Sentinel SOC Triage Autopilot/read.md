@@ -31,8 +31,8 @@ The Logic App deployment template is Azure-native and can be deployed independen
 2. Resolves the incident number to the canonical Sentinel incident resource name/GUID using `SecurityIncident.IncidentName`.
 3. Hydrates the incident and related alert evidence using Sentinel triage MCP tools.
 4. Uses Sentinel data exploration MCP tools for KQL/lake queries, entity enrichment, graph telemetry, and IOC/TI correlation.
-5. Generates a full ASCII incident report.
-6. Calls the Logic App callback URL with the report body.
+5. Generates two synchronized report renderings: HTML tables for Sentinel comments and Markdown tables for VS Code/GitHub Copilot readability.
+6. Sends only the HTML-formatted Sentinel comment body to the Logic App callback URL.
 7. The Logic App creates a new incident comment for each execution using a generated comment ID.
 8. The Logic App verifies the report version is present in Sentinel comments and returns a structured Done/Failed status.
 
@@ -59,6 +59,18 @@ flowchart TD
     P --> Q[Agent returns comment body and writeback status]
 ```
 
+## Report rendering behavior
+
+The agent intentionally produces two synchronized report renderings from the same evidence and verdict:
+
+| Rendering | Format | Destination | Purpose |
+| --- | --- | --- | --- |
+| `sentinelCommentBody` | Simple HTML tables | Logic App / Microsoft Sentinel incident comment | Renders as readable tables in Sentinel. |
+| `analystReadableReport` | GitHub-flavored Markdown tables | VS Code / GitHub Copilot final response | Renders as readable Markdown tables for analysts. |
+
+The Logic App receives only `sentinelCommentBody` in the `commentBody` field. The final Copilot response shows `analystReadableReport` plus the writeback execution result.
+
+The prompt also instructs the agent to use real line breaks and avoid literal `` `n`` / `\n` text in rendered report sections.
 ## Logic App writeback flow
 
 ```mermaid
@@ -175,7 +187,7 @@ The agent should:
 
 1. Resolve incident `1647` to `SecurityIncident.IncidentName`.
 2. Generate a full comment body.
-3. Invoke the Logic App callback URL.
+3. Invoke the Logic App callback URL with the HTML-formatted Sentinel comment body.
 4. Create a new Sentinel incident comment for this execution.
 5. Return a writeback execution result, including `CommentUpdateStatus`, `CommentTarget`, `CommentUpdateAttempts`, and `Verified`.
 
@@ -199,7 +211,7 @@ The agent invokes the Logic App with this schema:
   "generatedUtc": "2026-07-02T07:30:00Z",
   "mode": "update-or-create",
   "marker": "=== INCIDENT TRIAGE REPORT ===",
-  "commentBody": "=== INCIDENT TRIAGE REPORT ===\n...\n=== END OF REPORT ==="
+  "commentBody": "=== INCIDENT TRIAGE REPORT ===\n<h2>Report Metadata</h2>\n<table>...</table>\n=== END OF REPORT ==="
 }
 ```
 
@@ -248,5 +260,6 @@ Status values:
 - The Bicep template outputs the callback URL as a secure output. Treat it as a secret.
 - Keep the agent placeholders generic in public repositories.
 - Use this only for authorized defensive security operations.
+
 
 
