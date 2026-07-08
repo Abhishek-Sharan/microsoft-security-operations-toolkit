@@ -71,6 +71,7 @@ The agent intentionally produces two synchronized report renderings from the sam
 The Logic App receives only `sentinelCommentBody` in the `commentBody` field. The final Copilot response shows `analystReadableReport` plus the writeback execution result.
 
 The prompt also instructs the agent to use real line breaks and avoid literal `` `n`` / `\n` text in rendered report sections.
+
 ## Logic App writeback flow
 
 ```mermaid
@@ -196,6 +197,7 @@ The agent should:
 This Logic App is intentionally append-only: every successful execution creates a new Sentinel incident comment. It does not update or overwrite previous automation-generated comments, even when the stable marker is present.
 
 The request still accepts `mode = "update-or-create"` for compatibility with existing agents, but the workflow always follows the create-new path and returns `Done-CreatedNew` on success.
+
 ## Logic App request contract
 
 The agent invokes the Logic App with this schema:
