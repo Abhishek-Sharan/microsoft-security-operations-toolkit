@@ -33,7 +33,7 @@ The Logic App deployment template is Azure-native and can be deployed independen
 4. Uses Sentinel data exploration MCP tools for KQL/lake queries, entity enrichment, graph telemetry, and IOC/TI correlation.
 5. Generates two synchronized report renderings: HTML tables for Sentinel comments and Markdown tables for VS Code/GitHub Copilot readability.
 6. Sends only the HTML-formatted Sentinel comment body to the Logic App callback URL.
-7. The Logic App creates a new incident comment for each execution using a generated comment ID.
+7. The Logic App creates a new incident comment for each unique report version using a generated comment ID, and skips creation if the same report version already exists.
 8. The Logic App verifies the report version is present in Sentinel comments and returns a structured Done/Failed status.
 
 ## Execution flow
@@ -194,9 +194,24 @@ The agent should:
 
 ## Append-only comment behavior
 
-This Logic App is intentionally append-only: every successful execution creates a new Sentinel incident comment. It does not update or overwrite previous automation-generated comments, even when the stable marker is present.
+This Logic App is intentionally append-only and idempotent by `reportVersion`: every successful execution with a new report version creates a new Sentinel incident comment. If the same report version is submitted again, the workflow returns success with the existing comment target and does not create a duplicate comment. It does not update or overwrite previous automation-generated comments, even when the stable marker is present.
 
-The request still accepts `mode = "update-or-create"` for compatibility with existing agents, but the workflow always follows the create-new path and returns `Done-CreatedNew` on success.
+The request still accepts `mode = "update-or-create"` for compatibility with existing agents, but the workflow follows an idempotent create-new path and returns `Done-CreatedNew` on success. `Done-CreatedNew` can mean either a new comment was created or an existing comment with the same `reportVersion` was found and duplicate creation was skipped.
+
+
+## Duplicate prevention
+
+The Logic App prevents duplicate comments for the same analysis by checking existing incident comments for the incoming `reportVersion` before creating a new comment.
+
+Behavior:
+
+| Scenario | Result |
+| --- | --- |
+| New `reportVersion` | Creates a new Sentinel incident comment and returns `Done-CreatedNew`. |
+| Existing `reportVersion` | Skips comment creation, returns `Done-CreatedNew`, and returns the existing `commentTarget`. |
+| Verification cannot find `reportVersion` | Returns `Failed-Validation`. |
+
+This preserves append-only history for distinct analyses while making retries safe.
 
 ## Logic App request contract
 
@@ -221,7 +236,7 @@ Important: `incidentId` should be the Sentinel incident resource name/GUID (`Sec
 
 ## Logic App response contract
 
-Successful responses look like:
+Successful responses look like this. For duplicate retries with the same `reportVersion`, the same status is returned with the existing `commentTarget`:
 
 ```json
 {
@@ -262,6 +277,7 @@ Status values:
 - The Bicep template outputs the callback URL as a secure output. Treat it as a secret.
 - Keep the agent placeholders generic in public repositories.
 - Use this only for authorized defensive security operations.
+
 
 
 

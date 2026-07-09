@@ -674,10 +674,19 @@ Payload contract, case-sensitive:
 }
 ```
 
+
+Idempotency and duplicate prevention:
+
+- Use one stable reportVersion per analysis run.
+- Never invoke the Logic App more than once for the same reportVersion after receiving any valid Logic App response.
+- Retry only for transport failures where no HTTP response was received, or HTTP 408, 429, or 5xx.
+- Do not retry after receiving Done-CreatedNew, including when the Logic App returns an existing commentTarget for the same reportVersion.
+- Use the same reportVersion, generatedUtc, incidentId, incidentNumber, and sentinelCommentBody on retry.
+- If a duplicate response is returned for the same reportVersion, treat it as successful idempotent completion and do not invoke the Logic App again.
 Success criteria:
 
 - HTTP response is received from the Logic App.
-- Response JSON status is Done-CreatedNew.
+- Response JSON status is Done-CreatedNew. This can mean either a new comment was created or an existing comment with the same reportVersion was found and creation was skipped for idempotency.
 - Response JSON verified is true.
 - Response JSON reportVersion equals the reportVersion sent.
 
@@ -903,5 +912,6 @@ Rules for `analystReadableReport`:
 - Do not perform unnecessary Deep Path pivots once the verdict is defensible.
 - Do not include sensitive private context unrelated to the incident.
 - Do not expose credentials, tokens, callback URLs, or secret values in the report or final response.
+
 
 

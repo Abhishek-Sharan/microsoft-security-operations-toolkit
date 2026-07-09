@@ -1,7 +1,20 @@
 {
   "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
   "contentVersion": "1.0.0.0",
-  "parameters": {"defaultSubscriptionId": {"type": "String"}, "defaultResourceGroupName": {"type": "String"}, "defaultWorkspaceName": {"type": "String"}, "logAnalyticsWorkspaceCustomerId": {"type": "String"}},
+  "parameters": {
+    "defaultSubscriptionId": {
+      "type": "String"
+    },
+    "defaultResourceGroupName": {
+      "type": "String"
+    },
+    "defaultWorkspaceName": {
+      "type": "String"
+    },
+    "logAnalyticsWorkspaceCustomerId": {
+      "type": "String"
+    }
+  },
   "triggers": {
     "manual": {
       "type": "Request",
@@ -279,16 +292,16 @@
           "type": "Query",
           "inputs": {
             "from": "@body('HTTP_List_comments')?['value']",
-            "where": "@contains(coalesce(item()?['properties']?['message'], ''), variables('marker'))"
+            "where": "@contains(coalesce(item()?['properties']?['message'], ''), variables('reportVersion'))"
           },
           "runAfter": {}
         },
         "Condition_Has_existing_comment": {
           "type": "If",
           "expression": {
-            "equals": [
-              true,
-              false
+            "greater": [
+              "@length(body('Filter_Automation_Comment'))",
+              0
             ]
           },
           "actions": {
@@ -313,28 +326,8 @@
               }
             },
             "HTTP_Update_existing_comment": {
-              "type": "Http",
-              "inputs": {
-                "method": "PUT",
-                "uri": "@concat('https://management.azure.com/subscriptions/', if(empty(triggerBody()?['subscriptionId']), parameters('defaultSubscriptionId'), triggerBody()?['subscriptionId']), '/resourceGroups/', if(empty(triggerBody()?['resourceGroupName']), parameters('defaultResourceGroupName'), triggerBody()?['resourceGroupName']), '/providers/Microsoft.OperationalInsights/workspaces/', if(empty(triggerBody()?['workspaceName']), parameters('defaultWorkspaceName'), triggerBody()?['workspaceName']), '/providers/Microsoft.SecurityInsights/incidents/', variables('incidentResourceName'), '/comments/', variables('commentTarget'), '?api-version=2023-11-01')",
-                "headers": {
-                  "Content-Type": "application/json"
-                },
-                "body": {
-                  "properties": {
-                    "message": "@triggerBody()?['commentBody']"
-                  }
-                },
-                "authentication": {
-                  "type": "ManagedServiceIdentity",
-                  "audience": "https://management.azure.com/"
-                },
-                "retryPolicy": {
-                  "type": "exponential",
-                  "count": 2,
-                  "interval": "PT10S"
-                }
-              },
+              "type": "Compose",
+              "inputs": "Report version already exists; create skipped.",
               "runAfter": {
                 "Increment_attempts_update": [
                   "Succeeded"
@@ -345,13 +338,11 @@
               "type": "SetVariable",
               "inputs": {
                 "name": "status",
-                "value": "@if(or(equals(outputs('HTTP_Update_existing_comment')?['statusCode'], 401), equals(outputs('HTTP_Update_existing_comment')?['statusCode'], 403)), 'Failed-Authorization', if(or(equals(outputs('HTTP_Update_existing_comment')?['statusCode'], 404), equals(outputs('HTTP_Update_existing_comment')?['statusCode'], 501)), 'Failed-ToolUnavailable', if(and(greaterOrEquals(outputs('HTTP_Update_existing_comment')?['statusCode'], 200), less(outputs('HTTP_Update_existing_comment')?['statusCode'], 400)), 'Done-UpdatedExisting', 'Failed-Unknown')))"
+                "value": "Done-CreatedNew"
               },
               "runAfter": {
                 "HTTP_Update_existing_comment": [
-                  "Succeeded",
-                  "Failed",
-                  "TimedOut"
+                  "Succeeded"
                 ]
               }
             }
