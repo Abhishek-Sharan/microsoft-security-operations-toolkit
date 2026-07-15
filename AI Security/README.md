@@ -20,3 +20,7 @@ This repository is not intended for use in safety-critical, regulated, or produc
 ## Custom Agents
 
 - [SOC Malware Investigator Portable](Custom%20Agents/SOC%20Malware%20Investigator%20Portable/README.md) - a portable defensive SOC agent for Microsoft Defender XDR and Microsoft Sentinel malware incident triage.
+
+## Governance Queries
+
+- [Sentinel MCP Governance Queries](Sentinel%20MCP%20Governance/README.md) - portable KQL queries to track Microsoft Sentinel MCP endpoint activity, queried tables, caller identity, and query status using `LAQueryLogs`.

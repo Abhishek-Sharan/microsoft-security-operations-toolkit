@@ -1,0 +1,84 @@
+let Lookback = 30d;
+let TableInventoryLookback = 90d;
+
+// Optional. Leave as "" to include all RequestTarget workspaces.
+// If LAQueryLogs is routed to a central audit workspace, set this to the target Sentinel/Log Analytics workspace resource ID.
+let TargetWorkspace = "";
+
+// Portable Sentinel MCP endpoint definitions.
+// Track by URL path rather than local MCP server name because server names vary by user/client configuration.
+let McpEndpoints = datatable(McpEndpoint:string, McpUrlPath:string)
+[
+    "Sentinel MCP - Agent Creation", "/mcp/security-copilot-agent-creation",
+    "Sentinel MCP - Data Exploration", "/mcp/data-exploration",
+    "Sentinel MCP - Triage", "/mcp/triage"
+];
+
+// Optional explicit table list for environments where audit logs are centralized in a different workspace
+// than the queried Sentinel workspace, or for custom tables with no recent ingestion in Usage.
+let AdditionalTables = datatable(TableReached:string)
+[
+    "LAQueryLogs",
+    "SentinelAudit",
+    "SentinelHealth"
+];
+
+// Dynamic table inventory based on tables with recent ingestion in the workspace where this query runs.
+// This includes custom tables such as *_CL when they have recent ingestion.
+let WorkspaceTables =
+    Usage
+    | where TimeGenerated >= ago(TableInventoryLookback)
+    | where isnotempty(DataType)
+    | summarize by TableReached = tostring(DataType)
+    | union AdditionalTables
+    | summarize by TableReached;
+
+LAQueryLogs
+| where TimeGenerated >= ago(Lookback)
+| where isempty(TargetWorkspace) or RequestTarget =~ TargetWorkspace
+| extend QueryTextLower = tolower(tostring(QueryText))
+| extend Raw = strcat(
+    QueryTextLower,
+    " ",
+    tolower(tostring(RequestContext)),
+    " ",
+    tolower(tostring(RequestClientApp)),
+    " ",
+    tolower(tostring(RequestTarget))
+)
+| extend JoinKey = 1
+| join kind=inner (
+    McpEndpoints
+    | extend McpUrlPathLower = tolower(McpUrlPath), JoinKey = 1
+) on JoinKey
+| where Raw contains McpUrlPathLower
+| project-away JoinKey, JoinKey1
+| extend JoinKey = 1
+| join kind=inner (
+    WorkspaceTables
+    | extend TableReachedLower = tolower(TableReached), JoinKey = 1
+) on JoinKey
+| where QueryTextLower has TableReachedLower
+| extend Status = case(
+    ResponseCode between (200 .. 299), "Success",
+    isnull(ResponseCode), "Unknown",
+    "Failed"
+)
+| project
+    TimeGenerated,
+    McpEndpoint,
+    McpUrlPath,
+    TableReached,
+    Status,
+    ResponseCode,
+    Caller = coalesce(AADEmail, AADObjectId, AADClientId),
+    AADEmail,
+    AADObjectId,
+    AADClientId,
+    RequestClientApp,
+    RequestTarget,
+    ResponseRowCount,
+    ResponseDurationMs,
+    ScannedGB,
+    QueryText
+| order by TimeGenerated desc
