@@ -4,6 +4,23 @@ This sample retrieves WHOIS information for a list of domains by using the Micro
 
 The script is read-only. It reads domains from a text file, calls Microsoft Graph, and writes normalized CSV plus raw JSON output. It does not modify Microsoft Sentinel, Microsoft Defender, tenant settings, or domain records.
 
+## Disclaimer
+
+This project is provided for educational and demonstration purposes only.
+
+The software, workflows, prompts, scripts, and examples included in this repository are provided "as is", without warranties or guarantees of any kind, express or implied. The authors and contributors make no representations regarding reliability, safety, suitability, security, legality, or fitness for any particular purpose.
+
+By using this project, you acknowledge and agree that:
+
+- You are solely responsible for how you use, modify, deploy, or distribute the software.
+- You must thoroughly test the project in a controlled and secure environment before using it in production or with sensitive systems or data.
+- AI agents and automated systems may produce unexpected, inaccurate, incomplete, or harmful outputs and actions.
+- This project may contain experimental features, unsafe behaviors, or incomplete safeguards.
+- The authors are not responsible for any damage, losses, security incidents, operational failures, legal issues, compliance violations, data loss, financial losses, or other consequences resulting from the use of this project.
+- Users are responsible for ensuring compliance with all applicable laws, regulations, platform policies, licensing requirements, and organizational security practices.
+
+This repository is not intended for use in safety-critical, regulated, or production environments without independent review, validation, monitoring, and appropriate safeguards.
+
 ## API used
 
 ```http
