@@ -3,7 +3,7 @@
 A portable, repeatable Azure-native pipeline that automatically triages a Microsoft Sentinel incident and writes an HTML triage report back to the incident as a comment — **without using a Security Copilot agent**.
 
 > **Design statement — no agents are used.**
-> This asset deliberately does **not** invoke a Security Copilot custom/builder agent at runtime. All data retrieval runs as deterministic KQL inside the Logic App, and Security Copilot is used only as a **direct prompt** (the `ProcessPrompt` / *Submit a Security Copilot prompt (V2)* connector action) to reason over the collected evidence. See [Why no agent](#why-no-agent-design-rationale) for the platform limitations that led to this design.
+> This asset deliberately does **not** invoke a Security Copilot custom/builder agent at runtime. All data retrieval runs as deterministic KQL inside the Logic App, and Security Copilot is used only as a **direct prompt** (the `ProcessPrompt` / *Submit a Security Copilot prompt (V2)* connector action) to reason over the collected evidence.
 
 This is the no-agent counterpart to the [`Sentinel SOC Triage Autopilot`](../Sentinel%20SOC%20Triage%20Autopilot) asset (which uses Sentinel MCP inside a Copilot agent). Use this one when you need an agent-free, connector-triggerable, fully automated playbook.
 
@@ -46,19 +46,6 @@ flowchart TD
 ```
 
 **Key point:** the box labelled *Submit a Security Copilot prompt V2* is a **direct, synchronous prompt** to Security Copilot. There is no agent, no plugin, and no MCP skillset in the runtime path.
-
----
-
-## Why no agent (design rationale)
-
-The original design used a native Security Copilot builder agent with the Sentinel data-lake MCP tools (`query_lake`, etc.). That approach was abandoned because of the following platform limitations (as of this writing):
-
-1. **MCP builder agents cannot be shared workspace-wide.** Publishing an agent whose required skillset is the native `MCP.Sentinel` data-lake collection silently reverts to "Myself only." There is no consent surface to set `consentedToRequiredSkillsets = true` for other users — and it is not fixable by a Global Administrator.
-2. **Such agents never appear in the Logic Apps connector.** The connector only lists agents with `consentedToRequiredSkillsets = true` and a Default trigger. MCP agents meet neither, so they cannot be triggered by a playbook.
-3. **Manifest agents can be shared but cannot reference `query_lake`.** Referencing MCP tools from a manifest agent fails at publish/runtime ("Unable to find skill 'query_lake'").
-4. **`ExecuteAgent` is fire-and-forget.** Even a shareable agent returns `Status: Pending` with no result-retrieval operation, so a Logic App cannot get the agent's report inline.
-
-**Resolution:** move data collection into the Logic App (deterministic KQL) and use Security Copilot purely as a reasoning brain via the synchronous `ProcessPrompt` action. This keeps the reasoning quality of the LLM while producing a connector-triggerable, fully automated pipeline. The only capability lost is adaptive, agent-driven query planning against the data lake.
 
 ---
 
@@ -172,7 +159,7 @@ To make throughput sustainable:
 | Reasoning | Direct Security Copilot prompt (`ProcessPrompt`) | Security Copilot custom agent |
 | Data retrieval | Deterministic KQL in the Logic App | Sentinel MCP (`query_lake`, triage/data-exploration tools) |
 | Adaptive query planning | No (fixed KQL) | Yes (agent-driven) |
-| Connector-triggerable | Yes | Requires MCP agent sharing (currently blocked) |
+| Connector-triggerable | Yes | Runs as a Copilot agent |
 | Runtime dependency on MCP | None | Sentinel MCP servers |
 | Best for | Agent-free, fully automated production triage today | Interactive/agentic triage in a Copilot + MCP environment |
 
