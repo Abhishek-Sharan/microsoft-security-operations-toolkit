@@ -1,0 +1,35 @@
+{
+  "_comment": "Sample Microsoft Sentinel automation rule that runs the Triage Reasoner playbook on incident creation. Deploy with: az rest --method put --url \"https://management.azure.com/subscriptions/<SUB_ID>/resourceGroups/<RG>/providers/Microsoft.OperationalInsights/workspaces/<WORKSPACE_NAME>/providers/Microsoft.SecurityInsights/automationRules/<NEW_GUID>?api-version=2023-11-01\" --body @automation-rule.sample.json. Prerequisite: the Azure Security Insights service principal must hold 'Microsoft Sentinel Automation Contributor' on the resource group that contains the playbook.",
+  "properties": {
+    "displayName": "Auto-Triage - Run Security Copilot Triage Reasoner",
+    "order": 1,
+    "triggeringLogic": {
+      "isEnabled": true,
+      "triggersOn": "Incidents",
+      "triggersWhen": "Created",
+      "conditions": [
+        {
+          "conditionType": "Property",
+          "conditionProperties": {
+            "propertyName": "IncidentSeverity",
+            "operator": "Equals",
+            "propertyValues": [
+              "High",
+              "Medium"
+            ]
+          }
+        }
+      ]
+    },
+    "actions": [
+      {
+        "order": 1,
+        "actionType": "RunPlaybook",
+        "actionConfiguration": {
+          "logicAppResourceId": "/subscriptions/<SUB_ID>/resourceGroups/<RG>/providers/Microsoft.Logic/workflows/sentinel-soc-triage-reasoner",
+          "tenantId": "<TENANT_ID>"
+        }
+      }
+    ]
+  }
+}

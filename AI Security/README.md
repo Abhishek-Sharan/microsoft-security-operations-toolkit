@@ -20,6 +20,8 @@ This repository is not intended for use in safety-critical, regulated, or produc
 ## Custom Agents
 
 - [SOC Malware Investigator Portable](Custom%20Agents/SOC%20Malware%20Investigator%20Portable/README.md) - a portable defensive SOC agent for Microsoft Defender XDR and Microsoft Sentinel malware incident triage.
+- [Sentinel SOC Triage Autopilot](Custom%20Agents/Sentinel%20SOC%20Triage%20Autopilot/read.md) - a portable Copilot custom agent that uses Sentinel MCP to triage an incident and write back a verified incident comment via a Logic App.
+- [Sentinel SOC Triage Reasoner (No-Agent)](Custom%20Agents/Sentinel%20SOC%20Triage%20Reasoner%20(No-Agent)/read.md) - an agent-free, connector-triggerable pipeline that collects evidence with KQL and uses a direct Security Copilot prompt (no agent, no MCP) to triage a Sentinel incident and post an HTML report back as a comment.
 
 ## Governance Queries
 

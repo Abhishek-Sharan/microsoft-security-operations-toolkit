@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "playbookName": {
+      "value": "sentinel-soc-triage-reasoner"
+    },
+    "location": {
+      "value": "<AZURE_REGION>"
+    },
+    "workspaceName": {
+      "value": "<WORKSPACE_NAME>"
+    },
+    "azureSentinelConnectionName": {
+      "value": "azuresentinel-triage-reasoner"
+    },
+    "securityCopilotConnectionName": {
+      "value": "securitycopilot-triage-reasoner"
+    }
+  }
+}

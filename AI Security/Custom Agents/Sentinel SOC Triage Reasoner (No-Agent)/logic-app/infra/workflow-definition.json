@@ -1,0 +1,173 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "logAnalyticsWorkspaceCustomerId": {
+      "defaultValue": "<LOG_ANALYTICS_WORKSPACE_CUSTOMER_ID>",
+      "type": "String"
+    }
+  },
+  "triggers": {
+    "Microsoft_Sentinel_incident": {
+      "type": "ApiConnectionWebhook",
+      "inputs": {
+        "body": {
+          "callback_url": "@{listCallbackUrl()}"
+        },
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+          }
+        },
+        "path": "/incident-creation"
+      }
+    }
+  },
+  "actions": {
+    "KQL_Incident": {
+      "type": "Http",
+      "runAfter": {},
+      "inputs": {
+        "method": "POST",
+        "uri": "https://api.loganalytics.io/v1/workspaces/@{parameters('logAnalyticsWorkspaceCustomerId')}/query",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "query": "let N = toint('@{triggerBody()?['object']?['properties']?['incidentNumber']}'); SecurityIncident | where IncidentNumber == N | summarize arg_max(TimeGenerated, *) by IncidentNumber | project IncidentName, IncidentNumber, Title, Severity, Status, Description, Owner=tostring(Owner), AlertIds=tostring(AlertIds), CreatedTime, FirstActivityTime, LastActivityTime"
+        },
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "audience": "https://api.loganalytics.io"
+        }
+      }
+    },
+    "KQL_Alerts": {
+      "type": "Http",
+      "runAfter": {
+        "KQL_Incident": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "method": "POST",
+        "uri": "https://api.loganalytics.io/v1/workspaces/@{parameters('logAnalyticsWorkspaceCustomerId')}/query",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "query": "let N = toint('@{triggerBody()?['object']?['properties']?['incidentNumber']}'); let inc = SecurityIncident | where IncidentNumber == N | summarize arg_max(TimeGenerated, *) by IncidentNumber; SecurityAlert | where TimeGenerated > ago(90d) | join kind=inner (inc | mv-expand aid=todynamic(AlertIds) | project SystemAlertId=tostring(aid)) on SystemAlertId | project AlertName, AlertSeverity, TimeGenerated, Tactics, Description=substring(Description,0,500), Entities=tostring(Entities) | take 30"
+        },
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "audience": "https://api.loganalytics.io"
+        }
+      }
+    },
+    "Compose_Prompt": {
+      "type": "Compose",
+      "runAfter": {
+        "KQL_Alerts": [
+          "Succeeded"
+        ]
+      },
+      "inputs": "You are a Microsoft Sentinel SOC triage reasoning specialist. Analyze the EVIDENCE BUNDLE below for exactly one incident and produce ONE self-contained HTML incident triage report.\n\nOUTPUT RULES (STRICT): Output valid self-contained HTML ONLY. No Markdown, no code fences, no backticks. ASCII only. Begin the output with exactly this line: <p>=== INCIDENT TRIAGE REPORT ===</p> and end with exactly this line: <p>=== END OF REPORT ===</p>. Render each major section title as an <h3> heading and each structured subsection as an HTML <table> with Field and Value columns where applicable. Include ALL of these sections in this exact order, even if data is missing (render explicit evidence-gap text rather than omitting): Report Metadata; Assumptions Made; 1) Executive Summary; 1a) Top Priority Findings; 2) Incident Overview; 2a) Alert Summary; 3) Entity and Scope Analysis; 4) Evidence and Correlation; 5) Threat Intelligence and IOC Findings; 5a) Graph and Blast Radius Findings; 6) Classification and Determination; 7) Recommended Actions; 8) Evidence Gaps. In Report Metadata include IncidentNumber and a generatedUtc ISO-8601 UTC timestamp. In Classification and Determination classify as True Positive, Benign Positive, False Positive, or Undetermined with confidence Low, Medium, or High; keep confidence conservative. Never fabricate evidence; treat any missing field as an explicit evidence gap. In section 5a, note that graph telemetry was not provided in this evidence bundle (evidence is collected via KQL and does not include exposure-graph data). Do not include any text outside the opening and closing marker lines.\n\n=== EVIDENCE BUNDLE ===\nIncidentNumber: @{triggerBody()?['object']?['properties']?['incidentNumber']}\n\nIncident metadata (KQL SecurityIncident raw JSON):\n@{body('KQL_Incident')}\n\nAlerts and entities (KQL SecurityAlert raw JSON):\n@{body('KQL_Alerts')}\n=== END EVIDENCE BUNDLE ==="
+    },
+    "Submit_a_Security_Copilot_prompt_V2": {
+      "type": "ApiConnection",
+      "runAfter": {
+        "Compose_Prompt": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['securitycopilot']['connectionId']"
+          }
+        },
+        "method": "post",
+        "body": {
+          "PromptContent": "@{outputs('Compose_Prompt')}"
+        },
+        "path": "/process-promptV2"
+      }
+    },
+    "Extract_HTML": {
+      "type": "Compose",
+      "runAfter": {
+        "Submit_a_Security_Copilot_prompt_V2": [
+          "Succeeded"
+        ]
+      },
+      "inputs": "@{replace(replace(replace(body('Submit_a_Security_Copilot_prompt_V2')?['EvaluationResultContent'], '```html', ''), '```', ''), '\\n', '')}"
+    },
+    "Guard_Copilot_Error": {
+      "type": "If",
+      "runAfter": {
+        "Extract_HTML": [
+          "Succeeded"
+        ]
+      },
+      "expression": {
+        "and": [
+          {
+            "not": {
+              "contains": [
+                "@outputs('Extract_HTML')",
+                "Try rewording your prompt"
+              ]
+            }
+          },
+          {
+            "not": {
+              "contains": [
+                "@outputs('Extract_HTML')",
+                "Copilot can't respond"
+              ]
+            }
+          }
+        ]
+      },
+      "actions": {
+        "Post_Comment": {
+          "type": "Http",
+          "runAfter": {},
+          "inputs": {
+            "method": "PUT",
+            "uri": "https://management.azure.com@{triggerBody()?['object']?['id']}/comments/@{guid()}?api-version=2023-11-01",
+            "body": {
+              "properties": {
+                "message": "@{outputs('Extract_HTML')}"
+              }
+            },
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "audience": "https://management.azure.com"
+            }
+          }
+        }
+      },
+      "else": {
+        "actions": {
+          "Fail_On_Copilot_Capacity_Error": {
+            "type": "Terminate",
+            "runAfter": {},
+            "inputs": {
+              "runStatus": "Failed",
+              "runError": {
+                "code": "SecurityCopilotUnavailable",
+                "message": "Security Copilot returned a capacity/usage error instead of a report (e.g. 'Try rewording your prompt' / 'Copilot can't respond'). No comment was posted. Increase provisioned SCUs or enable overage units on the Security Copilot capacity, then re-run."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}
