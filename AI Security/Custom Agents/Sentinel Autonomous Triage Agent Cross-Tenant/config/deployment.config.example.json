@@ -1,0 +1,18 @@
+{
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "securityCopilotWorkspaceName": "Destination Security Copilot workspace",
+  "azureSubscriptionId": "00000000-0000-0000-0000-000000000000",
+  "deploymentLocation": "westeurope",
+  "logicAppResourceGroupName": "sentinel-automation-rg",
+  "logicAppLocation": "westeurope",
+  "logicAppName": "sentinel-incident-comment-upsert",
+  "sentinelSubscriptionId": "00000000-0000-0000-0000-000000000000",
+  "sentinelResourceGroupName": "sentinel-rg",
+  "sentinelWorkspaceName": "sentinel-workspace",
+  "sentinelWorkspaceCustomerId": "",
+  "solutionPrefix": "Contoso",
+  "tags": {
+    "solution": "sentinel-autonomous-triage",
+    "managedBy": "bicep"
+  }
+}

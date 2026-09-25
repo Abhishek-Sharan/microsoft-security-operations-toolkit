@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "westeurope" },
+    "logicAppName": { "value": "sentinel-incident-comment-upsert" },
+    "sentinelSubscriptionId": { "value": "00000000-0000-0000-0000-000000000000" },
+    "sentinelResourceGroupName": { "value": "sentinel-rg" },
+    "sentinelWorkspaceName": { "value": "sentinel-workspace" },
+    "sentinelWorkspaceCustomerId": { "value": "00000000-0000-0000-0000-000000000000" },
+    "deploySentinelRoleAssignment": { "value": true },
+    "tags": {
+      "value": {
+        "solution": "sentinel-autonomous-triage",
+        "managedBy": "bicep"
+      }
+    }
+  }
+}

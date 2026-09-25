@@ -1,0 +1,12 @@
+{
+  "subscriptionId": "00000000-0000-0000-0000-000000000000",
+  "resourceGroupName": "sentinel-rg",
+  "workspaceName": "sentinel-workspace",
+  "incidentId": "00000000-0000-0000-0000-000000000000",
+  "incidentNumber": 1647,
+  "reportVersion": "v20260925-120000",
+  "generatedUtc": "2026-09-25T12:00:00Z",
+  "commentBody": "=== INCIDENT TRIAGE REPORT ===<br><h2>Deployment validation</h2><table><tr><th>Field</th><th>Value</th></tr><tr><td>Status</td><td>Test only</td></tr></table>=== END OF REPORT ===",
+  "mode": "update-or-create",
+  "marker": "=== INCIDENT TRIAGE REPORT ==="
+}

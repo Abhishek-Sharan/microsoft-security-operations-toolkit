@@ -1,0 +1,48 @@
+Descriptor:
+  Name: __PLUGIN_SKILLSET__
+  DisplayName: __PLUGIN_DISPLAY_NAME__
+  Description: Upserts the v5 autonomous triage report as a Microsoft Sentinel incident comment through the approved Logic App.
+  SupportedAuthTypes:
+    - None
+SkillGroups:
+  - Format: LogicApp
+    Skills:
+      - Name: __PLUGIN_SKILL__
+        DisplayName: __PLUGIN_DISPLAY_NAME__
+        Description: Upserts the generated HTML triage report as a Sentinel incident comment.
+        Inputs:
+          - Name: subscriptionId
+            Description: Azure subscription ID containing the Sentinel workspace.
+            Required: true
+          - Name: resourceGroupName
+            Description: Resource group containing the Sentinel workspace.
+            Required: true
+          - Name: workspaceName
+            Description: Sentinel workspace name.
+            Required: true
+          - Name: incidentId
+            Description: Canonical Sentinel incident resource name or GUID.
+            Required: true
+          - Name: incidentNumber
+            Description: Human-readable Sentinel incident number.
+            Required: true
+          - Name: reportVersion
+            Description: Report version in vYYYYMMDD-HHMMSS format.
+            Required: true
+          - Name: generatedUtc
+            Description: UTC ISO-8601 report generation timestamp.
+            Required: true
+          - Name: commentBody
+            Description: HTML triage report body.
+            Required: true
+          - Name: mode
+            Description: Writeback mode; use update-or-create.
+            Required: true
+          - Name: marker
+            Description: Stable triage report marker.
+            Required: true
+        Settings:
+          SubscriptionId: __AZURE_SUBSCRIPTION_ID__
+          ResourceGroup: __LOGIC_APP_RESOURCE_GROUP__
+          WorkflowName: __LOGIC_APP_NAME__
+          TriggerName: manual

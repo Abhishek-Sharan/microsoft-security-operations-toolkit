@@ -1,0 +1,3 @@
+config/deployment.config.json
+generated/
+*.zip
