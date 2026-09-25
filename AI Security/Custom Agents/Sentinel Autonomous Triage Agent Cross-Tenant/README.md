@@ -52,6 +52,18 @@ The renderer uses the two tokenized manifests included in this kit:
 - `templates/agent.template.yaml`
 - `templates/logic-app-plugin.template.yaml`
 
+### Embedded Sentinel KQL Skills
+
+The generated agent manifest deploys these three embedded Microsoft Sentinel KQL skills. Their names are fixed and are not changed by `solutionPrefix`:
+
+| Skill name | Purpose |
+|---|---|
+| `TriageV5GetSentinelIncidentByNumber` | Retrieves the latest `SecurityIncident` record for an exact human-readable incident number and resolves its canonical incident resource name. |
+| `TriageV5GetSentinelAlertsByIncidentNumber` | Retrieves up to 30 related `SecurityAlert` records, including entities, tactics, techniques, severity, and alert context. |
+| `TriageV5GetSentinelCorroboratingEvidenceByIncidentNumber` | Correlates incident entities with time-bounded evidence from `CommonSecurityLog`, `Syslog`, and `SecurityEvent`. |
+
+These skills are embedded directly in the agent manifest and do not require Sentinel MCP or `query_lake`. Their KQL runs against the destination workspace configured in `config/deployment.config.json`.
+
 ## 1. Destination-Tenant Prerequisites
 
 1. A Microsoft Security Copilot workspace and capacity must exist in the destination tenant.
@@ -199,7 +211,9 @@ Perform this step before uploading the agent.
 4. Verify the preview contains exactly:
    - The generated agent skillset.
    - The generated Logic App plugin skillset.
-   - Three embedded KQL skills.
+   - `TriageV5GetSentinelIncidentByNumber`.
+   - `TriageV5GetSentinelAlertsByIncidentNumber`.
+   - `TriageV5GetSentinelCorroboratingEvidenceByIncidentNumber`.
    - One Logic App writeback skill.
 5. Confirm no source-tenant, v2, v3, EXL, or unrelated plugin dependencies appear.
 6. Publish with **For everyone in workspace**.
@@ -218,7 +232,7 @@ Use a low-risk test incident in the destination workspace.
    Investigate Sentinel incident <NUMBER> and write back the triage report.
    ```
 
-3. Confirm all three generated KQL skills execute.
+3. Confirm all three embedded KQL skills execute: `TriageV5GetSentinelIncidentByNumber`, `TriageV5GetSentinelAlertsByIncidentNumber`, and `TriageV5GetSentinelCorroboratingEvidenceByIncidentNumber`.
 4. Confirm the generated Logic App plugin skill executes once.
 5. In Logic App run history, verify the run status is **Succeeded**.
 6. In Sentinel, verify the incident contains one comment beginning with `=== INCIDENT TRIAGE REPORT ===`.
