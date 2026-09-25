@@ -238,6 +238,23 @@ Use a low-risk test incident in the destination workspace.
 | `Authentication expired` | Reauthenticate the Security Copilot portal and reopen the agent. |
 | Duplicate old dependencies | Use a new `solutionPrefix`; do not reuse old skillset names. |
 
+### Agent shows `Just you`
+
+The `Just you` tag means the agent was published at user-private scope. Publishing the same manifest again does not reliably convert an existing private definition to workspace scope, especially when its internal agent or skillset names are reused.
+
+Use this recovery sequence:
+
+1. Set a new, unique `solutionPrefix` in `config/deployment.config.json`.
+2. Run `scripts/Test-DeploymentKit.ps1` again to generate a new agent identity and matching Logic App plugin identity.
+3. In **Sources** > **Manage plugins** > **Custom** > **Upload plugin**, upload the newly generated Logic App plugin first.
+4. Select **Anyone in this workspace**, complete setup if prompted, enable the plugin, and confirm that its badge is **Workspace**, not **Private**.
+5. Upload the newly generated agent manifest from **Build**.
+6. Publish it with **For everyone in workspace**.
+7. Open the new workspace-scoped agent, select **Set up**, choose the intended run identity, and complete setup.
+8. Confirm that the active agent has the new generated internal name and does not show **Just you**, **Private**, or **Authentication expired**.
+
+The old private copy can remain visible to its owner. Do not select it when validating the workspace deployment; distinguish the copies by the unique prefix and generated internal names.
+
 ## Security and Operational Notes
 
 - The Logic App callback URL is not stored in this package or agent manifest.
